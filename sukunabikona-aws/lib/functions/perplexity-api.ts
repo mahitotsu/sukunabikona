@@ -6,7 +6,25 @@ const perplexityApiEndpoint = 'https://api.perplexity.ai/chat/completions';
 
 export const handler: Handler = async (event) => {
 
-    const apiKey = await fetch(`${paramsAndSecretsUrl}?${new URLSearchParams({
+    const parameters = event.parameters as [{ name: string; type: string; value: string; }] || [];
+    const prompt = parameters.find(param => param.name)?.value;
+    const answer = await get_apiKey().then(apiKey => invoke_api(apiKey, prompt));
+
+    return {
+        messageVersion: '1.0',
+        response: {
+            actionGroup: event.actionGroup,
+            function: event.function,
+            functionResponse: { responseBody: { TEXT: { body: JSON.stringify(answer, null, 4) } } },
+        },
+        sessionAttributes: event.sessionAttributes,
+        promptSessionAttributes: event.promptSessionAttributes,
+    };
+};
+
+const get_apiKey = (): Promise<any | undefined> => {
+
+    return fetch(`${paramsAndSecretsUrl}?${new URLSearchParams({
         name: '/perplexity/apikey',
         withDecryption: 'true',
     })}`, {
@@ -17,8 +35,15 @@ export const handler: Handler = async (event) => {
     })
         .then(response => response.json())
         .then(json => json.Parameter.Value);
+};
 
-    const answer = await fetch(`${perplexityApiEndpoint}`, {
+const invoke_api = (apiKey: string | undefined, prompt: string | undefined): Promise<any | undefined> => {
+
+    if (apiKey == undefined || prompt == undefined) {
+        return Promise.resolve(undefined);
+    }
+
+    return fetch(`${perplexityApiEndpoint}`, {
         method: 'POST',
         headers: {
             'accept': 'application/json',
@@ -30,7 +55,7 @@ export const handler: Handler = async (event) => {
             messages: [{
                 role: 'system',
                 content: `
-                You are an AI assistant.
+                You are an AI assistant that provides up-to-date information based on internet searches.
 
                 1. Create answers that include the information the user is looking for.
                 2. If multiple answers are possible, include all possible answers in the answer.
@@ -39,18 +64,10 @@ export const handler: Handler = async (event) => {
                 `
             }, {
                 role: 'user',
-                content: 'How many stars are in the universe?'
+                content: prompt,
             }],
         })
     })
         .then(response => response.json())
-        .then(json => json);
-
-    return {
-        statusCode: 200,
-        Headers: {
-            'content-type': 'application/json',
-        },
-        body: answer,
-    };
-}
+        .then(json => json.choices[0].message.content);
+};
