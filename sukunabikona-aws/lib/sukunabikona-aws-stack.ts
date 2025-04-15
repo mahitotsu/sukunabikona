@@ -1,4 +1,5 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
+import { ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { LoggingFormat, ParamsAndSecretsLayerVersion } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
@@ -14,6 +15,7 @@ export class SukunabikonaAwsStack extends Stack {
         super(scope, id, props);
 
         const region = props?.env?.region || '';
+        const account = props?.env?.account || '';
         const paramsAndSecretsExtension = ParamsAndSecretsLayerVersion.fromVersionArn(paramsAndSecretsArns[region]);
         if (paramsAndSecretsExtension == undefined) {
             throw new Error('The required values are missing.');
@@ -25,7 +27,7 @@ export class SukunabikonaAwsStack extends Stack {
         const perplexityApi = new NodejsFunction(this, 'PerplexityApi', {
             entry: `${__dirname}/functions/perplexity-api.ts`,
             memorySize: 1024,
-            timeout: Duration.seconds(60),
+            timeout: Duration.minutes(5),
             paramsAndSecrets: paramsAndSecretsExtension,
             loggingFormat: LoggingFormat.JSON,
             logGroup: new LogGroup(this, 'LogGroup', {
@@ -34,6 +36,12 @@ export class SukunabikonaAwsStack extends Stack {
             }),
         });
         apiKey.grantRead(perplexityApi);
+        perplexityApi.addPermission('BedrockAgentPermission', {
+            principal: new ServicePrincipal('bedrock.amazonaws.com'),
+            action: 'lambda:InvokeFunction',
+            sourceAccount: this.account,
+            sourceArn: `arn:aws:bedrock:${region}:${account}:agent/*`,
+        });
 
         new CfnOutput(this, 'PerplexityApiFunctionName', { value: perplexityApi.functionName });
     }
