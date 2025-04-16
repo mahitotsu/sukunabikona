@@ -35,8 +35,9 @@ export const handler: Handler = async (event) => {
 const search = (event: any): Promise<any | undefined> => {
 
     const parameters = event.parameters as [{ name: string; type: string; value: string; }] || [];
-    const prompt = parameters.find(param => param.name)?.value;
-    return get_apiKey().then(apiKey => invoke_api(apiKey, prompt));
+    const prompt = parameters.find(param => param.name == 'prompt')?.value;
+    const domians = parameters.find(param => param.name == 'domians')?.value.split(',');
+    return get_apiKey().then(apiKey => invoke_api(apiKey, prompt, domians));
 }
 
 const get_apiKey = (): Promise<any | undefined> => {
@@ -54,11 +55,30 @@ const get_apiKey = (): Promise<any | undefined> => {
         .then(json => json.Parameter.Value);
 };
 
-const invoke_api = (apiKey: string | undefined, prompt: string | undefined): Promise<any | undefined> => {
+const invoke_api = (apiKey: string | undefined, prompt: string | undefined, domains: string[] | undefined): Promise<any | undefined> => {
 
     if (apiKey == undefined || prompt == undefined) {
         return Promise.resolve(undefined);
     }
+
+    const payload = {
+        model: 'sonar-pro',
+        messages: [{
+            role: 'system',
+            content: `
+            You are an AI assistant that provides up-to-date information based on internet searches.
+
+            1. Create answers that include the information the user is looking for.
+            2. If multiple answers are possible, include all possible answers in the answer.
+            3. If multiple answers are included, separate them with a blank line.
+            4. Answers should not be formatted with Markdown.
+            `
+        }, {
+            role: 'user',
+            content: prompt,
+        }],
+        ...(domains !== undefined && { search_domain_filter: domains }),
+    };
 
     return fetch(`${perplexityApiEndpoint}`, {
         method: 'POST',
@@ -67,24 +87,9 @@ const invoke_api = (apiKey: string | undefined, prompt: string | undefined): Pro
             'content-type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-            model: 'sonar-pro',
-            messages: [{
-                role: 'system',
-                content: `
-                You are an AI assistant that provides up-to-date information based on internet searches.
-
-                1. Create answers that include the information the user is looking for.
-                2. If multiple answers are possible, include all possible answers in the answer.
-                3. If multiple answers are included, separate them with a blank line.
-                4. Answers should not be formatted with Markdown.
-                `
-            }, {
-                role: 'user',
-                content: prompt,
-            }],
-        })
+        body: JSON.stringify(payload)
     })
         .then(response => response.json())
+        .then(json => { console.log(json); return json; })
         .then(json => json.choices[0].message.content);
 };
