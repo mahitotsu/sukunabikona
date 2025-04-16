@@ -6,9 +6,19 @@ const perplexityApiEndpoint = 'https://api.perplexity.ai/chat/completions';
 
 export const handler: Handler = async (event) => {
 
-    const parameters = event.parameters as [{ name: string; type: string; value: string; }] || [];
-    const prompt = parameters.find(param => param.name)?.value;
-    const answer = await get_apiKey().then(apiKey => invoke_api(apiKey, prompt));
+    const name = event.function;
+    var answer;
+    switch (name) {
+        case 'search':
+            answer = await search(event);
+            break;
+        case 'now':
+            answer = { now: new Date().toISOString() };
+            break;
+        default:
+            answer = 'The specified function name is not defined.';
+            break;
+    };
 
     return {
         messageVersion: '1.0',
@@ -21,6 +31,13 @@ export const handler: Handler = async (event) => {
         promptSessionAttributes: event.promptSessionAttributes,
     };
 };
+
+const search = (event: any): Promise<any | undefined> => {
+
+    const parameters = event.parameters as [{ name: string; type: string; value: string; }] || [];
+    const prompt = parameters.find(param => param.name)?.value;
+    return get_apiKey().then(apiKey => invoke_api(apiKey, prompt));
+}
 
 const get_apiKey = (): Promise<any | undefined> => {
 
@@ -51,7 +68,7 @@ const invoke_api = (apiKey: string | undefined, prompt: string | undefined): Pro
             'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: 'sonar',
+            model: 'sonar-pro',
             messages: [{
                 role: 'system',
                 content: `
